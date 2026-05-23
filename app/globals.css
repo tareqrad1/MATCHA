@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --ink: #0c120d;
+  --matcha: #8aa05f;
+  --cream: #f4f1ea;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Lenis manages scroll; html must not smooth-scroll natively. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+::selection {
+  background: rgba(138, 160, 95, 0.35);
+  color: var(--cream);
+}
+
+/* Minimalist matcha scrollbar (where visible). */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0c120d;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3526;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4a2c;
+}
+
+@layer components {
+  .display-line {
+    @apply font-display font-semibold leading-[0.95] tracking-tight text-cream;
+  }
+  .eyebrow {
+    @apply font-sans text-[0.7rem] uppercase tracking-widest2 text-matcha/80;
+  }
+  .glow-text {
+    text-shadow:
+      0 0 28px rgba(138, 160, 95, 0.3),
+      0 0 90px rgba(138, 160, 95, 0.12);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .will-blur {
+    will-change: filter, opacity, transform;
+  }
+  .bg-radial-matcha {
+    background: radial-gradient(
+      ellipse 60% 50% at 50% 50%,
+      rgba(138, 160, 95, 0.1),
+      transparent 70%
+    );
+  }
+}
+
+/* Honor reduced-motion: collapse the heavy cinematics. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
