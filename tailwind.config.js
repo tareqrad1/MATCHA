@@ -20,8 +20,14 @@ module.exports = {
         sand: '#e7e1d3',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"General Sans"', 'Satoshi', 'Inter', 'sans-serif'],
+        sans: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
+        display: [
+          '"General Sans"',
+          'Satoshi',
+          'var(--font-inter)',
+          'Inter',
+          'sans-serif',
+        ],
       },
       letterSpacing: {
         widest2: '0.35em',

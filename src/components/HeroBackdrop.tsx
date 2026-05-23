@@ -19,24 +19,68 @@ interface HeroBackdropProps {
 export default function HeroBackdrop({ triggerRef }: HeroBackdropProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLDivElement>(null);
+  const shade = useRef<HTMLDivElement>(null);
   const mouse = useMousePosition();
 
-  // Pointer parallax — eased every frame, no re-renders.
+  // Pointer parallax — eased toward the cursor, but the rAF loop runs ONLY
+  // while the hero is on screen and stops itself once the eased position has
+  // settled, so it isn't burning a frame callback for the whole session.
   useEffect(() => {
     const el = img.current;
     if (!el) return;
     if (window.matchMedia('(pointer: coarse)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     const xTo = gsap.quickTo(el, '--px', { duration: 0.9, ease: 'power3.out' });
     const yTo = gsap.quickTo(el, '--py', { duration: 0.9, ease: 'power3.out' });
+
     let raf = 0;
+    let running = false;
+    let lastX = 0;
+    let lastY = 0;
+
     const loop = () => {
-      xTo(mouse.current.x * 18);
-      yTo(-mouse.current.y * 18);
+      const tx = mouse.current.x * 18;
+      const ty = -mouse.current.y * 18;
+      xTo(tx);
+      yTo(ty);
+      // Stop the loop once the target has stopped moving; a fresh pointer
+      // event restarts it. No idle per-frame work.
+      if (Math.abs(tx - lastX) < 0.01 && Math.abs(ty - lastY) < 0.01) {
+        running = false;
+        return;
+      }
+      lastX = tx;
+      lastY = ty;
       raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    const kick = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(loop);
+    };
+
+    // Only animate while the hero is actually visible.
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          window.addEventListener('pointermove', kick);
+          kick();
+        } else {
+          window.removeEventListener('pointermove', kick);
+          running = false;
+          cancelAnimationFrame(raf);
+        }
+      },
+      { threshold: 0 }
+    );
+    if (wrap.current) io.observe(wrap.current);
+
+    return () => {
+      io.disconnect();
+      window.removeEventListener('pointermove', kick);
+      cancelAnimationFrame(raf);
+    };
   }, [mouse]);
 
   // Idle Ken-Burns drift + scroll-driven depth/fade.
@@ -52,10 +96,22 @@ export default function HeroBackdrop({ triggerRef }: HeroBackdropProps) {
           repeat: -1,
         });
       }
+      // Depth via transform only (GPU-composited). The "darken on scroll" is
+      // done by fading a black overlay's opacity instead of animating
+      // filter:brightness on scrub, which forced a full repaint every tick.
       gsap.to(wrap.current, {
         yPercent: 18,
         scale: 1.1,
-        filter: 'brightness(0.4)',
+        ease: 'none',
+        scrollTrigger: {
+          trigger: triggerRef?.current ?? undefined,
+          start: 'top top',
+          end: 'bottom top',
+          scrub: true,
+        },
+      });
+      gsap.to(shade.current, {
+        opacity: 0.6,
         ease: 'none',
         scrollTrigger: {
           trigger: triggerRef?.current ?? undefined,
@@ -75,10 +131,17 @@ export default function HeroBackdrop({ triggerRef }: HeroBackdropProps) {
         ref={img}
         className="absolute inset-0 bg-cover bg-center will-change-transform"
         style={{
-          backgroundImage: 'url(/bg.png)',
+          backgroundImage: 'url(/bg.webp)',
           transform:
             'translate3d(var(--px,0px), var(--py,0px), 0) scale(1.05)',
         }}
+      />
+
+      {/* scroll-driven darkening overlay (opacity tween, not filter:brightness) */}
+      <div
+        ref={shade}
+        className="pointer-events-none absolute inset-0 bg-ink"
+        style={{ opacity: 0 }}
       />
 
       {/* matcha bloom lifting off the splash */}

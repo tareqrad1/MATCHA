@@ -3,32 +3,38 @@
 import { useEffect, useRef } from 'react';
 import { gsap } from '@/lib/gsap';
 import { FRAME_COUNT } from '@/lib/frames';
+import type { FrameSequence } from '@/lib/preloader';
 
 interface ScrollSequenceProps {
-  images: HTMLImageElement[] | null;
+  sequence: FrameSequence | null;
 }
 
 /**
  * Cinematic scroll-driven storytelling. A canvas is pinned for several
- * viewport-heights; scroll progress maps to a frame index (1..FRAME_COUNT) and
- * the matching preloaded image is drawn cover-fit. Caption layers fade/blur in
- * and out over phases of the sequence.
+ * viewport-heights; scroll progress maps to a frame index (1..FRAME_COUNT).
+ * Frames stream in via the FrameSequence manager (buffer-ahead + memory cap);
+ * the canvas always draws the nearest available frame so there's no blanking.
  *
- * `images` is the decoded HTMLImageElement[] from the preloader.
+ * Performance notes:
+ *  - We draw on GSAP's ticker (one shared clock with Lenis/ScrollTrigger) only
+ *    when the frame index actually changed, not every rAF — no wasted paints.
+ *  - Captions animate transform + opacity only (no blur-on-scrub, which forces
+ *    a full re-rasterization every scroll tick and was a major jank source).
  */
-export default function ScrollSequence({ images }: ScrollSequenceProps) {
+export default function ScrollSequence({ sequence }: ScrollSequenceProps) {
   const root = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frame = useRef({ i: 0 });
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const frame = useRef(0); // current float frame index from scroll
+  const drawn = useRef(-1); // last integer frame actually painted
 
-  // Draw a single frame, cover-fit to the canvas (handles DPR + resize).
-  const render = (idx: number) => {
+  // Draw a single frame, cover-fit to the canvas. Reads the nearest decoded
+  // frame from the sequence so an in-flight frame never blanks the canvas.
+  const draw = (idx: number) => {
     const canvas = canvasRef.current;
-    const img =
-      images?.[Math.min(images.length - 1, Math.max(0, Math.round(idx)))];
-    if (!canvas || !img) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = ctxRef.current;
+    const img = sequence?.get(idx);
+    if (!canvas || !ctx || !img || !img.width) return;
     const cw = canvas.width;
     const ch = canvas.height;
     const ir = img.width / img.height;
@@ -45,11 +51,10 @@ export default function ScrollSequence({ images }: ScrollSequenceProps) {
       dx = 0;
       dy = (ch - dh) / 2;
     }
-    ctx.clearRect(0, 0, cw, ch);
     ctx.drawImage(img, dx, dy, dw, dh);
   };
 
-  // Size the canvas backing store to the device pixel ratio.
+  // Size the canvas backing store to DPR (capped at 2 to bound fill cost).
   const resize = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -58,18 +63,37 @@ export default function ScrollSequence({ images }: ScrollSequenceProps) {
     canvas.height = window.innerHeight * dpr;
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    render(frame.current.i);
+    drawn.current = -1; // force a redraw at the new size
+    draw(frame.current);
   };
 
   useEffect(() => {
-    if (!images?.length) return;
+    if (!sequence) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // alpha:false lets the compositor skip per-pixel blending — cheaper fills.
+    ctxRef.current = canvas.getContext('2d', { alpha: false });
+
     resize();
     window.addEventListener('resize', resize);
 
+    // One ticker callback paints only when the rounded frame changed, and
+    // tells the streamer where we are so it buffers the right frames ahead.
+    const tick = () => {
+      const i = Math.round(frame.current);
+      if (i !== drawn.current) {
+        drawn.current = i;
+        sequence.setPlayhead(i);
+        draw(i);
+      }
+    };
+    gsap.ticker.add(tick);
+
     const ctx = gsap.context(() => {
-      // Drive the frame index from scroll. We tween a plain object and redraw
-      // on each update so playback is buttery and tied to Lenis-smoothed scroll.
-      gsap.to(frame.current, {
+      // Map scroll progress -> frame index. We mutate a ref (no React state,
+      // no re-renders) and let the ticker handle painting.
+      const proxy = { i: 0 };
+      gsap.to(proxy, {
         i: FRAME_COUNT - 1,
         ease: 'none',
         scrollTrigger: {
@@ -79,11 +103,14 @@ export default function ScrollSequence({ images }: ScrollSequenceProps) {
           scrub: 0.6,
           pin: '[data-seq-stage]',
           anticipatePin: 1,
+          invalidateOnRefresh: true,
         },
-        onUpdate: () => render(frame.current.i),
+        onUpdate: () => {
+          frame.current = proxy.i;
+        },
       });
 
-      // Caption phases — each fades/blurs in then out across a scroll window.
+      // Caption phases — transform + opacity ONLY (GPU-composited, no repaint).
       const captions = gsap.utils.toArray<HTMLElement>('[data-seq-caption]');
       captions.forEach((cap) => {
         const [from, to] = (cap.dataset.range ?? '0,0').split(',').map(Number);
@@ -97,24 +124,19 @@ export default function ScrollSequence({ images }: ScrollSequenceProps) {
         });
         tl.fromTo(
           cap,
-          { opacity: 0, filter: 'blur(16px)', y: 30 },
-          { opacity: 1, filter: 'blur(0px)', y: 0, duration: 1, ease: 'power2.out' }
-        ).to(cap, {
-          opacity: 0,
-          filter: 'blur(16px)',
-          y: -30,
-          duration: 1,
-          ease: 'power2.in',
-        });
+          { opacity: 0, y: 30 },
+          { opacity: 1, y: 0, duration: 1, ease: 'power2.out' }
+        ).to(cap, { opacity: 0, y: -30, duration: 1, ease: 'power2.in' });
       });
     }, root);
 
     return () => {
       window.removeEventListener('resize', resize);
+      gsap.ticker.remove(tick);
       ctx.revert();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images]);
+  }, [sequence]);
 
   return (
     <section id="story" ref={root} className="relative h-[420vh] w-full bg-ink">
@@ -136,21 +158,21 @@ export default function ScrollSequence({ images }: ScrollSequenceProps) {
           <h2
             data-seq-caption
             data-range="2,30"
-            className="display-line absolute text-[10vw] md:text-[7vw] will-blur"
+            className="display-line absolute text-[10vw] md:text-[7vw]"
           >
             Grown In <span className="text-matcha glow-text">Shade</span>
           </h2>
           <h2
             data-seq-caption
             data-range="34,64"
-            className="display-line absolute text-[10vw] md:text-[7vw] will-blur"
+            className="display-line absolute text-[10vw] md:text-[7vw]"
           >
             Ground By <span className="text-matcha glow-text">Stone</span>
           </h2>
           <h2
             data-seq-caption
             data-range="68,98"
-            className="display-line absolute text-[12vw] md:text-[8vw] will-blur"
+            className="display-line absolute text-[12vw] md:text-[8vw]"
           >
             Poured Slow.
           </h2>

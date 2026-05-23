@@ -1,8 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // @react-three/drei ships ESM that benefits from being transpiled by Next.
-  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+  images: {
+    // Serve AVIF first, then WebP — both far smaller than the source PNG.
+    formats: ['image/avif', 'image/webp'],
+    // Optimized images are immutable content; cache them hard at the edge.
+    minimumCacheTTL: 60 * 60 * 24 * 365,
+    deviceSizes: [360, 480, 640, 768, 1080, 1280, 1920],
+    imageSizes: [16, 32, 64, 128, 256, 384],
+  },
+  // Keep modular imports lean — pull only the GSAP/lenis surface we use.
+  experimental: {
+    optimizePackageImports: ['gsap', 'lenis', 'framer-motion'],
+  },
 };
 
 export default nextConfig;

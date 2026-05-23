@@ -1,6 +1,17 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import Providers from './providers';
+import FontshareDisplay from './FontshareDisplay';
+
+// Inter is self-hosted and subset by next/font — no render-blocking request,
+// no layout shift, served from our own origin. Exposed as a CSS variable so
+// Tailwind's `font-sans` resolves to it.
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   title: 'MATCHA — A Quiet Ritual',
@@ -22,25 +33,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <head>
-        {/* Display + body type. General Sans / Satoshi via Fontshare, Inter via Google. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-        <link
-          href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=satoshi@400,500,700&display=swap"
-          rel="stylesheet"
-        />
+        {/* Preload the hero LCP plate so first paint isn't gated on discovery. */}
+        <link rel="preload" as="image" href="/bg.webp" fetchPriority="high" />
+        <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="anonymous" />
       </head>
       <body>
+        {/* Display type (General Sans / Satoshi) loaded non-render-blocking. */}
+        <FontshareDisplay />
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLenis } from '@/hooks/useLenis';
-import { preloadImages } from '@/lib/preloader';
-import { frameUrls } from '@/lib/frames';
+import { FrameSequence } from '@/lib/preloader';
+import { FRAME_COUNT, INITIAL_FRAME_BATCH } from '@/lib/frames';
 import { ScrollTrigger } from '@/lib/gsap';
 
 import { hasSeenIntro, markIntroSeen } from '@/lib/introGate';
@@ -22,38 +22,38 @@ export default function Landing() {
   // Splash plays only once per browser session. On return visits the intro is
   // already "done": the hero animates in immediately and no Loader mounts.
   const seen = hasSeenIntro();
-  const [images, setImages] = useState<HTMLImageElement[] | null>(null);
+  const [sequence, setSequence] = useState<FrameSequence | null>(null);
+  const [firstBatchReady, setFirstBatchReady] = useState(false);
   const [intro, setIntro] = useState(seen); // hero may animate in (curtain lifted)
+  const seqRef = useRef<FrameSequence | null>(null);
 
   // Smooth scroll is held until the intro starts so users can't scroll past
   // the hero before it has revealed.
   useLenis(intro);
 
-  // Preload the full image sequence invisibly underneath the splash. The
-  // splash itself shows no %; `images != null` simply gates its final reveal.
+  // Stream the image sequence. Only the first small batch gates the splash;
+  // the rest loads in the background and buffers ahead of the scroll position.
   useEffect(() => {
-    let cancelled = false;
-    preloadImages(frameUrls).then((imgs) => {
-      if (!cancelled) setImages(imgs);
-    });
-    return () => {
-      cancelled = true;
-    };
+    const seq = new FrameSequence(FRAME_COUNT, INITIAL_FRAME_BATCH);
+    seqRef.current = seq;
+    setSequence(seq);
+    seq.start(() => setFirstBatchReady(true));
+    return () => seq.destroy();
   }, []);
 
-  // Once frames exist & sections mount, refresh ScrollTrigger measurements.
+  // Once the opening frames exist & sections mount, refresh ScrollTrigger.
   useEffect(() => {
-    if (images) {
+    if (firstBatchReady) {
       const id = requestAnimationFrame(() => ScrollTrigger.refresh());
       return () => cancelAnimationFrame(id);
     }
-  }, [images]);
+  }, [firstBatchReady]);
 
   return (
     <>
       {!seen && (
         <Loader
-          ready={images != null}
+          ready={firstBatchReady}
           onComplete={() => {
             markIntroSeen();
             setIntro(true);
@@ -65,7 +65,7 @@ export default function Landing() {
 
       <main>
         <Hero intro={intro} />
-        <ScrollSequence images={images} />
+        <ScrollSequence sequence={sequence} />
         <Manifesto />
         <Experience />
         <StoreGallery />

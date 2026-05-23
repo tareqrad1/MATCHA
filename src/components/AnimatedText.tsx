@@ -39,7 +39,12 @@ export default function AnimatedText({
     }
 
     const ctx = gsap.context(() => {
-      gsap.set(letters, { opacity: 0, yPercent: 120, filter: 'blur(12px)' });
+      gsap.set(letters, {
+        opacity: 0,
+        yPercent: 120,
+        filter: 'blur(12px)',
+        willChange: 'transform, opacity, filter',
+      });
       gsap.to(letters, {
         opacity: 1,
         yPercent: 0,
@@ -49,6 +54,9 @@ export default function AnimatedText({
         delay,
         stagger: { each: 0.028, from: 'start' },
         scrollTrigger: { trigger: el, start, once: true },
+        // Drop the compositor hint once revealed so idle headlines don't pin
+        // a layer for the whole session.
+        onComplete: () => gsap.set(letters, { willChange: 'auto' }),
       });
     }, el);
 
@@ -69,7 +77,7 @@ export default function AnimatedText({
             <span
               key={ci}
               data-letter
-              className="inline-block will-blur"
+              className="inline-block"
               style={{ transformOrigin: 'bottom' }}
             >
               {char}

@@ -19,7 +19,7 @@ body {
   padding: 0;
   background: var(--ink);
   color: var(--cream);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -78,9 +78,8 @@ html.lenis body {
   .text-balance {
     text-wrap: balance;
   }
-  .will-blur {
-    will-change: filter, opacity, transform;
-  }
+  /* No standing will-change here: GSAP promotes/demotes layers per-tween
+     (autoSleep), so a permanent hint just pins idle compositor layers. */
   .bg-radial-matcha {
     background: radial-gradient(
       ellipse 60% 50% at 50% 50%,
